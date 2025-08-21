@@ -1,0 +1,73 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    
+    - name: Get version from tag
+      id: version
+      run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+    
+    - name: Create source distribution
+      run: |
+        python setup.py sdist
+        
+    - name: Calculate SHA256
+      id: sha
+      run: |
+        cd dist
+        SHA256=$(shasum -a 256 holdscribe-*.tar.gz | cut -d' ' -f1)
+        echo "SHA256=$SHA256" >> $GITHUB_OUTPUT
+        echo "FILENAME=$(ls holdscribe-*.tar.gz)" >> $GITHUB_OUTPUT
+    
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: dist/holdscribe-*.tar.gz
+        body: |
+          ## HoldScribe v${{ steps.version.outputs.VERSION }}
+          
+          Push-to-talk voice transcription tool. Hold a key, speak, release to transcribe and paste!
+          
+          ### Installation
+          
+          **Via Homebrew (recommended):**
+          ```bash
+          brew install holdscribe
+          holdscribe
+          ```
+          
+          **Manual installation:**
+          ```bash
+          pip install https://github.com/${{ github.repository }}/releases/download/v${{ steps.version.outputs.VERSION }}/${{ steps.sha.outputs.FILENAME }}
+          holdscribe
+          ```
+          
+          ### Usage
+          - Hold **Right Alt** key and speak
+          - Release to transcribe and paste at cursor
+          - Press **ESC** to exit
+          
+          ### Requirements
+          - macOS 10.15+
+          - Microphone access
+          - Accessibility permissions for keyboard monitoring
+          
+          ---
+          
+          **SHA256:** `${{ steps.sha.outputs.SHA256 }}`
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

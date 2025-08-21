@@ -1,0 +1,281 @@
+#!/usr/bin/env python3
+"""
+HoldScribe - Push-to-Talk Voice Transcription Tool
+Hold a key to record, release to transcribe and paste at cursor
+"""
+
+import pyaudio
+import wave
+import threading
+import queue
+import time
+import tempfile
+import os
+import sys
+from pynput import keyboard
+from pynput.keyboard import Key
+import whisper
+import pyperclip
+import subprocess
+import platform
+
+class HoldScribe:
+    def __init__(self, trigger_key=Key.alt_r, model_size="base"):
+        self.trigger_key = trigger_key
+        self.is_recording = False
+        self.audio_queue = queue.Queue()
+        self.recording_thread = None
+        
+        # Audio settings
+        self.chunk = 1024
+        self.format = pyaudio.paInt16
+        self.channels = 1
+        self.rate = 16000  # Whisper works best with 16kHz
+        
+        # Initialize audio
+        self.audio = pyaudio.PyAudio()
+        
+        # Load Whisper model
+        print(f"Loading AI model '{model_size}'...")
+        self.model = whisper.load_model(model_size)
+        print("Model loaded successfully!")
+        
+        # Keyboard listener
+        self.listener = None
+        
+    def start_recording(self):
+        """Start audio recording"""
+        if self.is_recording:
+            return
+            
+        self.is_recording = True
+        self.audio_queue = queue.Queue()
+        
+        print("🎤 Recording started...")
+        
+        # Start recording thread
+        self.recording_thread = threading.Thread(target=self._record_audio)
+        self.recording_thread.daemon = True
+        self.recording_thread.start()
+        
+    def stop_recording(self):
+        """Stop recording and process audio"""
+        if not self.is_recording:
+            return
+            
+        self.is_recording = False
+        print("⏹️  Recording stopped, processing...")
+        
+        # Wait for recording thread to finish
+        if self.recording_thread:
+            self.recording_thread.join(timeout=2)
+        
+        # Process the recorded audio
+        self._process_audio()
+        
+    def _record_audio(self):
+        """Record audio in a separate thread"""
+        try:
+            stream = self.audio.open(
+                format=self.format,
+                channels=self.channels,
+                rate=self.rate,
+                input=True,
+                frames_per_buffer=self.chunk
+            )
+            
+            while self.is_recording:
+                try:
+                    data = stream.read(self.chunk, exception_on_overflow=False)
+                    self.audio_queue.put(data)
+                except Exception as e:
+                    print(f"Error recording: {e}")
+                    break
+                    
+            stream.stop_stream()
+            stream.close()
+            
+        except Exception as e:
+            print(f"Failed to initialize audio stream: {e}")
+            self.is_recording = False
+            
+    def _process_audio(self):
+        """Process recorded audio and transcribe"""
+        if self.audio_queue.empty():
+            print("No audio recorded")
+            return
+            
+        # Collect all audio data
+        audio_data = []
+        while not self.audio_queue.empty():
+            audio_data.append(self.audio_queue.get())
+            
+        if not audio_data:
+            print("No audio data to process")
+            return
+            
+        # Save to temporary WAV file
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as temp_file:
+            temp_filename = temp_file.name
+            
+        try:
+            # Write WAV file
+            with wave.open(temp_filename, 'wb') as wf:
+                wf.setnchannels(self.channels)
+                wf.setsampwidth(self.audio.get_sample_size(self.format))
+                wf.setframerate(self.rate)
+                wf.writeframes(b''.join(audio_data))
+            
+            # Transcribe with AI
+            print("🤖 Transcribing...")
+            result = self.model.transcribe(temp_filename, language="en")
+            text = result["text"].strip()
+            
+            if text:
+                print(f"📝 Transcribed: '{text}'")
+                self._paste_text(text)
+            else:
+                print("No speech detected")
+                
+        except Exception as e:
+            print(f"Error processing audio: {e}")
+            
+        finally:
+            # Clean up temp file
+            try:
+                os.unlink(temp_filename)
+            except:
+                pass
+                
+    def _paste_text(self, text):
+        """Paste text at current cursor position"""
+        try:
+            # Method 1: Try direct typing (works in most applications)
+            if platform.system() == "Darwin":  # macOS
+                # Use AppleScript for reliable pasting on macOS
+                script = f'''
+                tell application "System Events"
+                    keystroke "{text}"
+                end tell
+                '''
+                subprocess.run(["osascript", "-e", script], check=True)
+                
+            elif platform.system() == "Linux":
+                # Use xdotool for Linux
+                subprocess.run(["xdotool", "type", text], check=True)
+                
+            else:  # Windows fallback
+                # Copy to clipboard and paste
+                pyperclip.copy(text)
+                time.sleep(0.1)
+                # Simulate Ctrl+V
+                from pynput.keyboard import Controller
+                kbd = Controller()
+                with kbd.pressed(Key.ctrl):
+                    kbd.press('v')
+                    kbd.release('v')
+                    
+        except subprocess.CalledProcessError:
+            # Fallback: copy to clipboard
+            print("Direct typing failed, copied to clipboard instead")
+            pyperclip.copy(text)
+            print("📋 Text copied to clipboard - paste with Cmd+V")
+            
+        except Exception as e:
+            print(f"Error pasting text: {e}")
+            # Final fallback: just copy to clipboard
+            pyperclip.copy(text)
+            print("📋 Text copied to clipboard - paste with Cmd+V")
+    
+    def on_key_press(self, key):
+        """Handle key press events"""
+        try:
+            if key == self.trigger_key:
+                self.start_recording()
+        except AttributeError:
+            # Special keys (like function keys) might not have char
+            if key == self.trigger_key:
+                self.start_recording()
+            
+    def on_key_release(self, key):
+        """Handle key release events"""
+        try:
+            if key == self.trigger_key:
+                self.stop_recording()
+            elif key == Key.esc:
+                print("Exiting...")
+                return False  # Stop listener
+        except AttributeError:
+            if key == self.trigger_key:
+                self.stop_recording()
+            
+    def start_listener(self):
+        """Start the keyboard listener"""
+        print(f"HoldScribe ready! 🎤")
+        print(f"Hold {self.trigger_key} to record, release to transcribe")
+        print("Press ESC to exit")
+        
+        with keyboard.Listener(
+            on_press=self.on_key_press,
+            on_release=self.on_key_release
+        ) as listener:
+            self.listener = listener
+            listener.join()
+            
+    def cleanup(self):
+        """Clean up resources"""
+        self.is_recording = False
+        if self.audio:
+            self.audio.terminate()
+
+def main():
+    import argparse
+    
+    parser = argparse.ArgumentParser(description="HoldScribe - Push-to-talk voice transcription")
+    parser.add_argument("--key", default="alt_r", 
+                       help="Trigger key (default: alt_r, options: f1-f12, space, ctrl_r)")
+    parser.add_argument("--model", default="base",
+                       choices=["tiny", "base", "small", "medium", "large"],
+                       help="AI model size (default: base)")
+    
+    args = parser.parse_args()
+    
+    # Map key string to Key object
+    key_map = {
+        # Function keys
+        "f1": Key.f1, "f2": Key.f2, "f3": Key.f3, "f4": Key.f4,
+        "f5": Key.f5, "f6": Key.f6, "f7": Key.f7, "f8": Key.f8,
+        "f9": Key.f9, "f10": Key.f10, "f11": Key.f11, "f12": Key.f12,
+        
+        # Modifier keys
+        "space": Key.space,
+        "alt": Key.alt, "alt_r": Key.alt_r, "right_alt": Key.alt_r,
+        "ctrl": Key.ctrl, "ctrl_r": Key.ctrl_r, "right_ctrl": Key.ctrl_r,
+        "cmd": Key.cmd, "cmd_r": Key.cmd_r, "right_cmd": Key.cmd_r,
+        "shift": Key.shift, "shift_r": Key.shift_r, "right_shift": Key.shift_r,
+        
+        # Other useful keys
+        "caps_lock": Key.caps_lock,
+        "tab": Key.tab,
+        "home": Key.home,
+        "end": Key.end,
+        "page_up": Key.page_up,
+        "page_down": Key.page_down,
+        
+        # Arrow keys
+        "up": Key.up, "down": Key.down, "left": Key.left, "right": Key.right
+    }
+    
+    trigger_key = key_map.get(args.key.lower(), Key.alt_r)
+    
+    holdscribe = HoldScribe(trigger_key=trigger_key, model_size=args.model)
+    
+    try:
+        holdscribe.start_listener()
+    except KeyboardInterrupt:
+        print("\nInterrupted by user")
+    finally:
+        holdscribe.cleanup()
+
+if __name__ == "__main__":
+    main()
