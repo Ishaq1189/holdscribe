@@ -19,9 +19,68 @@ import pyperclip
 import subprocess
 import platform
 
+# macOS accessibility permission handling
+if platform.system() == "Darwin":
+    try:
+        import objc
+        
+        # Load ApplicationServices framework
+        bundle_path = '/System/Library/Frameworks/ApplicationServices.framework'
+        ApplicationServices = objc.loadBundle('ApplicationServices', 
+                                            globals(), 
+                                            bundle_path=bundle_path)
+        
+        # Load the AXIsProcessTrustedWithOptions function
+        objc.loadBundleFunctions(ApplicationServices, globals(), 
+                               [('AXIsProcessTrustedWithOptions', b'Z@')])
+        
+        AXIsProcessTrustedWithOptions = globals().get('AXIsProcessTrustedWithOptions')
+        
+    except ImportError:
+        # Fallback if objc not available
+        AXIsProcessTrustedWithOptions = None
+
+def check_accessibility_permissions():
+    """Check and request accessibility permissions on macOS"""
+    if platform.system() != "Darwin":
+        return True
+    
+    if AXIsProcessTrustedWithOptions is None:
+        print("⚠️  Cannot check accessibility permissions - objc not available")
+        print("Please manually grant accessibility permissions in System Settings")
+        return False
+    
+    # Check if already trusted
+    trusted = AXIsProcessTrustedWithOptions({})
+    if trusted:
+        print("✅ Accessibility permissions already granted")
+        return True
+    
+    print("🔐 Requesting accessibility permissions...")
+    print("A system dialog will appear - please click 'Open System Settings'")
+    print("Then add this application to Accessibility and enable it.")
+    
+    # Request permissions with automatic dialog
+    options = {
+        'AXTrustedCheckOptionPrompt': True
+    }
+    
+    # This will trigger the macOS permission dialog
+    trusted = AXIsProcessTrustedWithOptions(options)
+    
+    if trusted:
+        print("✅ Accessibility permissions granted!")
+        return True
+    else:
+        print("❌ Accessibility permissions not granted")
+        print("Please go to System Settings → Privacy & Security → Accessibility")
+        print("and add this application to the list.")
+        return False
+
 class HoldScribe:
-    def __init__(self, trigger_key=Key.alt_r, model_size="base"):
+    def __init__(self, trigger_key=Key.alt_r, model_size="base", background_mode=False):
         self.trigger_key = trigger_key
+        self.background_mode = background_mode
         self.is_recording = False
         self.audio_queue = queue.Queue()
         self.recording_thread = None
@@ -175,45 +234,36 @@ class HoldScribe:
                     kbd.press('v')
                     kbd.release('v')
                     
-        except subprocess.CalledProcessError:
+        except (subprocess.CalledProcessError, Exception) as e:
             # Fallback: copy to clipboard
-            print("Direct typing failed, copied to clipboard instead")
-            pyperclip.copy(text)
-            print("📋 Text copied to clipboard - paste with Cmd+V")
-            
-        except Exception as e:
-            print(f"Error pasting text: {e}")
-            # Final fallback: just copy to clipboard
+            if isinstance(e, subprocess.CalledProcessError):
+                print("Direct typing failed, copied to clipboard instead")
+            else:
+                print(f"Error pasting text: {e}")
             pyperclip.copy(text)
             print("📋 Text copied to clipboard - paste with Cmd+V")
     
     def on_key_press(self, key):
         """Handle key press events"""
-        try:
-            if key == self.trigger_key:
-                self.start_recording()
-        except AttributeError:
-            # Special keys (like function keys) might not have char
-            if key == self.trigger_key:
-                self.start_recording()
+        if key == self.trigger_key:
+            self.start_recording()
             
     def on_key_release(self, key):
         """Handle key release events"""
-        try:
-            if key == self.trigger_key:
-                self.stop_recording()
-            elif key == Key.esc:
-                print("Exiting...")
-                return False  # Stop listener
-        except AttributeError:
-            if key == self.trigger_key:
-                self.stop_recording()
+        if key == self.trigger_key:
+            self.stop_recording()
+        elif key == Key.esc and not self.background_mode:
+            print("Exiting...")
+            return False  # Stop listener
             
     def start_listener(self):
         """Start the keyboard listener"""
         print(f"HoldScribe ready! 🎤")
         print(f"Hold {self.trigger_key} to record, release to transcribe")
-        print("Press ESC to exit")
+        if not self.background_mode:
+            print("Press ESC to exit")
+        else:
+            print("Running in background mode - use 'killall Python' to stop")
         
         with keyboard.Listener(
             on_press=self.on_key_press,
@@ -237,8 +287,16 @@ def main():
     parser.add_argument("--model", default="base",
                        choices=["tiny", "base", "small", "medium", "large"],
                        help="AI model size (default: base)")
+    parser.add_argument("--background", action="store_true",
+                       help="Run in background mode (disable ESC to exit)")
     
     args = parser.parse_args()
+    
+    # Check accessibility permissions before starting
+    if not check_accessibility_permissions():
+        print("\n❌ HoldScribe requires accessibility permissions to function.")
+        print("Please grant permissions and try again.")
+        sys.exit(1)
     
     # Map key string to Key object
     key_map = {
@@ -268,7 +326,13 @@ def main():
     
     trigger_key = key_map.get(args.key.lower(), Key.alt_r)
     
-    holdscribe = HoldScribe(trigger_key=trigger_key, model_size=args.model)
+    holdscribe = HoldScribe(trigger_key=trigger_key, model_size=args.model, background_mode=args.background)
+    
+    # Show tip only in interactive mode
+    if not args.background:
+        print(f"\n💡 \033[1m\033[36mTIP:\033[0m To run in background: \033[33mholdscribe --background\033[0m")
+        print(f"   This lets you use other apps while HoldScribe runs.")
+        print(f"   Stop with: \033[31mkillall Python\033[0m\n")
     
     try:
         holdscribe.start_listener()
