@@ -70,4 +70,7 @@ Temporary Items
 
 # OS generated files
 Thumbs.db
-ehthumbs.dbhomebrew-holdscribe/
+ehthumbs.db
+
+# Homebrew tap repository (should be separate)
+homebrew-holdscribe/
