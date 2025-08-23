@@ -4,7 +4,7 @@ HoldScribe - Push-to-Talk Voice Transcription Tool
 Hold a key to record, release to transcribe and paste at cursor
 """
 
-__version__ = "1.2.1"
+__version__ = "1.3.0"
 
 import pyaudio
 import wave
@@ -408,54 +408,33 @@ def main():
     
     args = parser.parse_args()
     
-    # Handle daemonization first (before any output)
-    if args.daemon or args.background:
+    # For background mode, we'll just run quietly without forking
+    # User can add & to their command if they want shell backgrounding
+    if args.background:
+        if platform.system() != "Darwin":
+            print("❌ Background mode only supported on macOS") 
+            sys.exit(1)
+        print("🔄 Starting HoldScribe in background mode...")
+        print("💡 Use Ctrl+C to stop, or 'pkill -f holdscribe' from another terminal")
+        print("💡 To run in shell background, use: holdscribe --background &")
+        # Just continue - background mode means quiet operation, not forking
+    
+    elif args.daemon:
         if platform.system() != "Darwin":
             print("❌ Background/daemon mode only supported on macOS")
             sys.exit(1)
-        
-        # Check permissions before daemonizing
-        if not check_accessibility_permissions(interactive=not args.daemon):
-            if args.daemon:
-                # Can't prompt in daemon mode
-                sys.exit(1)
-            else:
-                print("\n⚠️  HoldScribe will run with limited functionality.")
-                print("Key monitoring may not work properly without accessibility permissions.")
-                response = input("\nDo you want to continue anyway? (y/N): ").strip().lower()
-                if response != 'y' and response != 'yes':
-                    sys.exit(1)
-        
-        if args.daemon:
-            print("🚀 Starting HoldScribe daemon...")
-            daemonize()
-        elif args.background:
-            print("🔄 Starting HoldScribe in background mode...")
-            print("💡 Use 'killall Python' or 'pkill -f holdscribe' to stop")
-            
-            # Fork for background mode (but keep minimal output)
-            import os
-            try:
-                pid = os.fork()
-                if pid > 0:
-                    # Parent process - show success and exit
-                    print(f"✅ HoldScribe started in background (PID: {pid})")
-                    sys.exit(0)
-                else:
-                    # Child process - become session leader and continue
-                    os.setsid()
-                    
-                    # Redirect stdout/stderr to avoid crashes from print statements
-                    import sys
-                    sys.stdout.flush()
-                    sys.stderr.flush()
-                    
-                    # Don't fully redirect like daemon mode, but minimize output
-                    # This helps prevent crashes from GUI-related print operations
-                    
-            except OSError:
-                print("❌ Failed to fork background process, running in foreground")
-                # Continue without forking
+        print("🚀 Starting HoldScribe daemon...")
+        daemonize()
+    
+    # Now check permissions (after fork for background mode)
+    if args.daemon or args.background:
+        # Check permissions for background/daemon modes (non-interactive)
+        if not check_accessibility_permissions(interactive=False):
+            # In background/daemon mode, exit silently if no permissions
+            sys.exit(1)
+        # Debug: confirm we passed permission check
+        if args.background and not args.daemon:
+            print("✅ Background process: permissions OK")
     else:
         # Interactive mode permission check
         if not check_accessibility_permissions(interactive=True):
