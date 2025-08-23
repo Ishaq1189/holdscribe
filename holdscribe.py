@@ -4,7 +4,7 @@ HoldScribe - Push-to-Talk Voice Transcription Tool
 Hold a key to record, release to transcribe and paste at cursor
 """
 
-__version__ = "1.3.0"
+__version__ = "1.3.1"
 
 import pyaudio
 import wave
@@ -408,16 +408,34 @@ def main():
     
     args = parser.parse_args()
     
-    # For background mode, we'll just run quietly without forking
-    # User can add & to their command if they want shell backgrounding
+    # For background mode, spawn a new detached process and exit parent
     if args.background:
         if platform.system() != "Darwin":
             print("❌ Background mode only supported on macOS") 
             sys.exit(1)
         print("🔄 Starting HoldScribe in background mode...")
-        print("💡 Use Ctrl+C to stop, or 'pkill -f holdscribe' from another terminal")
-        print("💡 To run in shell background, use: holdscribe --background &")
-        # Just continue - background mode means quiet operation, not forking
+        print("💡 Use 'pkill -f holdscribe' to stop")
+        
+        # Spawn a new detached process using subprocess
+        import subprocess
+        
+        # Build command without --background flag to avoid recursion
+        cmd_args = [sys.executable, __file__]
+        for arg in sys.argv[1:]:
+            if arg != '--background':
+                cmd_args.append(arg)
+        
+        # Start detached background process
+        process = subprocess.Popen(
+            cmd_args,
+            start_new_session=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            stdin=subprocess.DEVNULL
+        )
+        
+        print(f"✅ HoldScribe started in background (PID: {process.pid})")
+        sys.exit(0)  # Parent exits, child continues detached
     
     elif args.daemon:
         if platform.system() != "Darwin":
