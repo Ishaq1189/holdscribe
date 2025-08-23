@@ -8,7 +8,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name="holdscribe",
-    version="1.3.7",
+    version="1.3.8",
     author="Your Name",
     author_email="your.email@example.com",
     description="Hold a key to record, release to transcribe and paste at cursor",
