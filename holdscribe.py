@@ -4,7 +4,7 @@ HoldScribe - Push-to-Talk Voice Transcription Tool
 Hold a key to record, release to transcribe and paste at cursor
 """
 
-__version__ = "1.3.2"
+__version__ = "1.3.3"
 
 import pyaudio
 import wave
