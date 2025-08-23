@@ -4,7 +4,7 @@ HoldScribe - Push-to-Talk Voice Transcription Tool
 Hold a key to record, release to transcribe and paste at cursor
 """
 
-__version__ = "1.3.1"
+__version__ = "1.3.2"
 
 import pyaudio
 import wave
@@ -350,44 +350,21 @@ class HoldScribe:
             
         return granted
 
-def daemonize():
-    """Daemonize the process for true background operation"""
-    import os
-    import sys
-    
-    # First fork
-    try:
-        pid = os.fork()
-        if pid > 0:
-            # Parent process, exit
-            sys.exit(0)
-    except OSError:
-        print("Failed to fork process")
-        sys.exit(1)
-    
-    # Become session leader
-    os.setsid()
-    
-    # Second fork
-    try:
-        pid = os.fork()
-        if pid > 0:
-            # Parent process, exit
-            sys.exit(0)
-    except OSError:
-        print("Failed to fork process")
-        sys.exit(1)
-    
-    # Redirect standard file descriptors to /dev/null
-    si = open(os.devnull, 'r')
-    so = open(os.devnull, 'w')
-    se = open(os.devnull, 'w')
-    os.dup2(si.fileno(), sys.stdin.fileno())
-    os.dup2(so.fileno(), sys.stdout.fileno())
-    os.dup2(se.fileno(), sys.stderr.fileno())
 
 def main():
     import argparse
+    
+    # Check if script is executable (for debugging installation issues)
+    import stat
+    script_path = os.path.abspath(__file__)
+    try:
+        file_stat = os.stat(script_path)
+        if not (file_stat.st_mode & stat.S_IEXEC):
+            print("⚠️  Warning: Script may not have execute permissions")
+            print(f"Script path: {script_path}")
+            print("If installed via Homebrew, try: brew reinstall holdscribe")
+    except Exception:
+        pass  # Ignore stat errors
     
     parser = argparse.ArgumentParser(
         description=f"HoldScribe v{__version__} - Push-to-talk voice transcription",
@@ -442,7 +419,21 @@ def main():
             print("❌ Background/daemon mode only supported on macOS")
             sys.exit(1)
         print("🚀 Starting HoldScribe daemon...")
-        daemonize()
+        # Daemon mode uses same subprocess approach as background mode
+        import subprocess
+        cmd_args = [sys.executable, __file__]
+        for arg in sys.argv[1:]:
+            if arg != '--daemon':
+                cmd_args.append(arg)
+        process = subprocess.Popen(
+            cmd_args,
+            start_new_session=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            stdin=subprocess.DEVNULL
+        )
+        print(f"✅ HoldScribe daemon started (PID: {process.pid})")
+        sys.exit(0)
     
     # Now check permissions (after fork for background mode)
     if args.daemon or args.background:

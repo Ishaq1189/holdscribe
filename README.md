@@ -22,107 +22,65 @@ Hold **Right Alt**, speak, release to transcribe!
 - **Real-time feedback** - Visual indicators for recording and processing states
 - **Terminal friendly** - Works great with terminals like Ghostty, iTerm2, Terminal.app
 
-## 🚀 Quick Start
-
-### Prerequisites
-
-- **Python 3.8+**
-- **macOS** (tested on macOS 14+)
-- **Microphone access** (will be requested on first run)
-- **Accessibility permissions** for keyboard monitoring
-
-### Installation
-
-1. **Clone or download** this repository
-2. **Setup the environment**:
-   ```bash
-   make setup
-   ```
-
-3. **Start using**:
-   ```bash
-   make run
-   ```
-
-That's it! Hold the **Right Alt key** and speak. Release to transcribe.
-
 ## 📖 Usage
 
-### Basic Usage
+### Basic Commands
 
 ```bash
-# Start with Right Alt key (recommended)
-make run
+# Start with Right Alt key (default)
+holdscribe
 
-# Or manually
-./voice-transcribe.sh --key alt_r
+# Use different trigger keys
+holdscribe --key f8
+holdscribe --key f9
+
+# Choose AI models for speed vs accuracy
+holdscribe --model tiny    # Fastest
+holdscribe --model base    # Balanced (default)
+holdscribe --model large   # Most accurate
+
+# Background mode (runs continuously)
+holdscribe --background
+
+# Enhanced security (prompts before each recording)
+holdscribe --prompt-permissions
 ```
 
-### Alternative Trigger Keys
-
-```bash
-# Function keys (great for terminals)
-make run-f8
-make run-f9
-
-# Space bar (be careful - types spaces normally too)
-make run-space
-
-# Or manually specify any key
-./voice-transcribe.sh --key f10
-```
-
-### Available Keys
+### Available Trigger Keys
 
 - **Function keys**: `f1`, `f2`, `f3`, `f4`, `f5`, `f6`, `f7`, `f8`, `f9`, `f10`, `f11`, `f12`
 - **Modifier keys**: `alt_r`, `cmd_r`, `shift_r`, `ctrl`, `space`
 - **Other keys**: `caps_lock`, `tab`, `home`, `end`, `page_up`, `page_down`
 
-### Enhanced Security Mode
-
-For users who want extra security, HoldScribe can prompt for permission before each recording:
+### Background Mode
 
 ```bash
-# Prompt for permissions before each recording
-holdscribe --prompt-permissions
+# Run in background (keeps running after closing terminal)
+holdscribe --background
 
-# Combine with other options
-holdscribe --key f8 --prompt-permissions --model tiny
+# True daemon mode (completely detached)
+holdscribe --daemon
+
+# Stop background process
+pkill -f holdscribe
 ```
 
-This mode will ask for your explicit consent every time before:
-- Monitoring keyboard input
-- Recording audio
-- Processing speech with AI
-- Pasting transcribed text
-
-## 📦 Installation Methods
-
-### Homebrew (Recommended)
-```bash
-brew tap ishaq1189/holdscribe
-brew install holdscribe
-```
-
-### Manual Installation
-Follow the manual setup instructions below for development or custom installations.
-
-### Whisper Models
+### AI Models
 
 Choose between speed and accuracy:
 
 ```bash
-# Fastest (tiny model)
-make run-tiny
+# Fastest processing
+holdscribe --model tiny
 
-# Good balance (small model) 
-make run-small
+# Good balance (default)
+holdscribe --model base
 
-# More accurate (medium model)
-make run-medium
+# More accurate
+holdscribe --model medium
 
-# Most accurate (large model)
-make run-large
+# Most accurate
+holdscribe --model large
 ```
 
 | Model  | Speed | Accuracy | Size |
@@ -144,56 +102,23 @@ make run-large
 3. Click **+** and add your terminal app (Terminal.app, Ghostty, iTerm2, etc.)
 4. Enable the checkbox for your terminal
 
+### Enhanced Security Mode
+
+```bash
+# Prompt for permission before each recording
+holdscribe --prompt-permissions
+
+# Combine with other options
+holdscribe --key f8 --prompt-permissions --model tiny
+```
+
+This prompts for explicit consent before each recording session.
+
 ### Recommended Keys
 
-- **`alt_r` (Right Alt)** - Perfect for most users, doesn't interfere with typing
-- **`f8`, `f9`, `f10`** - Great for terminal use, easy to reach
-- **Avoid `space`** - Will type spaces when you normally type
-
-## 🛠️ Make Commands
-
-```bash
-# Running
-make run          # Start with right Alt key
-make run-f8       # Start with F8 key
-make run-space    # Start with space bar
-
-# Models
-make run-tiny     # Fastest transcription
-make run-small    # Good balance
-make run-medium   # More accurate
-make run-large    # Most accurate
-
-# Setup & Maintenance
-make setup        # Initial setup (create venv + install)
-make install      # Install dependencies only
-make clean        # Remove virtual environment
-make help         # Show all commands
-```
-
-## 🔧 Manual Setup
-
-If you prefer manual setup:
-
-```bash
-# Create virtual environment
-python3 -m venv voice-transcribe-env
-
-# Activate it
-source voice-transcribe-env/bin/activate
-
-# Install dependencies
-pip install openai-whisper pyaudio pynput pyperclip
-
-# Make script executable
-chmod +x voice-transcribe.sh
-
-# Run with basic permissions
-./voice-transcribe.sh --key alt_r
-
-# Run with enhanced security (prompts each time)
-python3 holdscribe.py --prompt-permissions
-```
+- **`alt_r` (Right Alt)** - Doesn't interfere with typing
+- **`f8`, `f9`, `f10`** - Great for terminal use
+- **Avoid `space`** - Will type spaces during normal use
 
 ## 🎯 How It Works
 
@@ -211,20 +136,12 @@ You need to grant accessibility permissions:
 - System Settings → Privacy & Security → Accessibility
 - Add your terminal app and enable it
 
-### Permission Issues on New Systems
+### Permission Issues
 
-HoldScribe now handles permissions more gracefully:
+HoldScribe handles permissions gracefully:
 1. **First run**: Prompts to grant accessibility permissions
 2. **Enhanced security**: Use `--prompt-permissions` for consent before each recording
 3. **Graceful fallback**: Continues with limited functionality if permissions denied
-
-```bash
-# Standard mode (one-time permission check)
-holdscribe
-
-# Enhanced security mode (prompts every time)
-holdscribe --prompt-permissions
-```
 
 ### Key Not Detected
 
