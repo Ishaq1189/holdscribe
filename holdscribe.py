@@ -40,14 +40,17 @@ if platform.system() == "Darwin":
         # Fallback if objc not available
         AXIsProcessTrustedWithOptions = None
 
-def check_accessibility_permissions():
+def check_accessibility_permissions(interactive=True):
     """Check and request accessibility permissions on macOS"""
     if platform.system() != "Darwin":
         return True
     
     if AXIsProcessTrustedWithOptions is None:
-        print("⚠️  Cannot check accessibility permissions - objc not available")
-        print("Please manually grant accessibility permissions in System Settings")
+        if interactive:
+            print("⚠️  Cannot check accessibility permissions - objc not available")
+            print("Please manually grant accessibility permissions in System Settings")
+            response = input("Do you want to continue anyway? (y/N): ").strip().lower()
+            return response == 'y' or response == 'yes'
         return False
     
     # Check if already trusted
@@ -55,6 +58,16 @@ def check_accessibility_permissions():
     if trusted:
         print("✅ Accessibility permissions already granted")
         return True
+    
+    if interactive:
+        print("\n🔐 HoldScribe needs accessibility permissions to monitor key presses.")
+        print("This allows it to detect when you press and release the trigger key.")
+        print("\nDo you want to grant these permissions? (y/N): ", end="")
+        response = input().strip().lower()
+        
+        if response != 'y' and response != 'yes':
+            print("❌ Permissions denied by user")
+            return False
     
     print("🔐 Requesting accessibility permissions...")
     print("A system dialog will appear - please click 'Open System Settings'")
@@ -75,15 +88,21 @@ def check_accessibility_permissions():
         print("❌ Accessibility permissions not granted")
         print("Please go to System Settings → Privacy & Security → Accessibility")
         print("and add this application to the list.")
+        if interactive:
+            print("\nDo you want to continue without permissions? (y/N): ", end="")
+            response = input().strip().lower()
+            return response == 'y' or response == 'yes'
         return False
 
 class HoldScribe:
-    def __init__(self, trigger_key=Key.alt_r, model_size="base", background_mode=False):
+    def __init__(self, trigger_key=Key.alt_r, model_size="base", background_mode=False, prompt_permissions=False):
         self.trigger_key = trigger_key
         self.background_mode = background_mode
+        self.prompt_permissions = prompt_permissions
         self.is_recording = False
         self.audio_queue = queue.Queue()
         self.recording_thread = None
+        self.permission_granted = True  # Track current permission state
         
         # Audio settings
         self.chunk = 1024
@@ -106,6 +125,12 @@ class HoldScribe:
         """Start audio recording"""
         if self.is_recording:
             return
+        
+        # Check permissions before each recording if prompt_permissions is enabled
+        if self.prompt_permissions and not self.background_mode:
+            if not self._check_runtime_permissions():
+                print("❌ Recording cancelled - permissions denied")
+                return
             
         self.is_recording = True
         self.audio_queue = queue.Queue()
@@ -277,6 +302,40 @@ class HoldScribe:
         self.is_recording = False
         if self.audio:
             self.audio.terminate()
+    
+    def _check_runtime_permissions(self):
+        """Check permissions at runtime with user prompt"""
+        if platform.system() != "Darwin":
+            return True
+        
+        # Check if we have accessibility permissions
+        has_accessibility = True
+        if AXIsProcessTrustedWithOptions is not None:
+            has_accessibility = AXIsProcessTrustedWithOptions({})
+        
+        # Check if we need microphone permissions (PyAudio handles this)
+        print(f"\n🔐 HoldScribe Permission Check")
+        print(f"Accessibility: {'✅ Granted' if has_accessibility else '❌ Not granted'}")
+        print(f"Microphone: Will be requested by PyAudio if needed")
+        
+        if not has_accessibility:
+            print("\n⚠️  Some features may not work without accessibility permissions.")
+        
+        print(f"\nDo you want to allow HoldScribe to:")
+        print(f"  • Monitor keyboard for trigger key ({self.trigger_key})")
+        print(f"  • Record audio when key is held")
+        print(f"  • Transcribe speech using AI")
+        print(f"  • Paste text at cursor position")
+        
+        response = input(f"\nAllow these actions? (y/N): ").strip().lower()
+        granted = response == 'y' or response == 'yes'
+        
+        if granted:
+            print("✅ User granted permissions for this session")
+        else:
+            print("❌ User denied permissions")
+            
+        return granted
 
 def main():
     import argparse
@@ -289,14 +348,23 @@ def main():
                        help="AI model size (default: base)")
     parser.add_argument("--background", action="store_true",
                        help="Run in background mode (disable ESC to exit)")
+    parser.add_argument("--prompt-permissions", action="store_true",
+                       help="Prompt for permissions before each recording (enhanced security)")
     
     args = parser.parse_args()
     
     # Check accessibility permissions before starting
-    if not check_accessibility_permissions():
-        print("\n❌ HoldScribe requires accessibility permissions to function.")
-        print("Please grant permissions and try again.")
-        sys.exit(1)
+    if not check_accessibility_permissions(interactive=True):
+        print("\n⚠️  HoldScribe will run with limited functionality.")
+        print("Key monitoring may not work properly without accessibility permissions.")
+        print("You can grant permissions later in System Settings → Privacy & Security → Accessibility")
+        
+        response = input("\nDo you want to continue anyway? (y/N): ").strip().lower()
+        if response != 'y' and response != 'yes':
+            print("Exiting...")
+            sys.exit(1)
+        
+        print("\n⚠️  Running with limited permissions - some features may not work correctly.")
     
     # Map key string to Key object
     key_map = {
@@ -326,13 +394,22 @@ def main():
     
     trigger_key = key_map.get(args.key.lower(), Key.alt_r)
     
-    holdscribe = HoldScribe(trigger_key=trigger_key, model_size=args.model, background_mode=args.background)
+    holdscribe = HoldScribe(
+        trigger_key=trigger_key, 
+        model_size=args.model, 
+        background_mode=args.background,
+        prompt_permissions=args.prompt_permissions
+    )
     
     # Show tip only in interactive mode
     if not args.background:
         print(f"\n💡 \033[1m\033[36mTIP:\033[0m To run in background: \033[33mholdscribe --background\033[0m")
         print(f"   This lets you use other apps while HoldScribe runs.")
-        print(f"   Stop with: \033[31mkillall Python\033[0m\n")
+        print(f"   Stop with: \033[31mkillall Python\033[0m")
+        if not args.prompt_permissions:
+            print(f"\n🔐 \033[1m\033[36mSECURITY:\033[0m For enhanced security: \033[33mholdscribe --prompt-permissions\033[0m")
+            print(f"   This prompts for permission before each recording.")
+        print()
     
     try:
         holdscribe.start_listener()

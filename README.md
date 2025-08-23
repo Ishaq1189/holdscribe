@@ -5,6 +5,7 @@ A push-to-talk voice transcription tool that uses AI for accurate speech-to-text
 ## 🚀 Quick Install with Homebrew
 
 ```bash
+brew tap ishaq1189/holdscribe
 brew install holdscribe
 holdscribe
 ```
@@ -76,6 +77,35 @@ make run-space
 - **Function keys**: `f1`, `f2`, `f3`, `f4`, `f5`, `f6`, `f7`, `f8`, `f9`, `f10`, `f11`, `f12`
 - **Modifier keys**: `alt_r`, `cmd_r`, `shift_r`, `ctrl`, `space`
 - **Other keys**: `caps_lock`, `tab`, `home`, `end`, `page_up`, `page_down`
+
+### Enhanced Security Mode
+
+For users who want extra security, HoldScribe can prompt for permission before each recording:
+
+```bash
+# Prompt for permissions before each recording
+holdscribe --prompt-permissions
+
+# Combine with other options
+holdscribe --key f8 --prompt-permissions --model tiny
+```
+
+This mode will ask for your explicit consent every time before:
+- Monitoring keyboard input
+- Recording audio
+- Processing speech with AI
+- Pasting transcribed text
+
+## 📦 Installation Methods
+
+### Homebrew (Recommended)
+```bash
+brew tap ishaq1189/holdscribe
+brew install holdscribe
+```
+
+### Manual Installation
+Follow the manual setup instructions below for development or custom installations.
 
 ### Whisper Models
 
@@ -158,8 +188,11 @@ pip install openai-whisper pyaudio pynput pyperclip
 # Make script executable
 chmod +x voice-transcribe.sh
 
-# Run
+# Run with basic permissions
 ./voice-transcribe.sh --key alt_r
+
+# Run with enhanced security (prompts each time)
+python3 holdscribe.py --prompt-permissions
 ```
 
 ## 🎯 How It Works
@@ -177,6 +210,21 @@ chmod +x voice-transcribe.sh
 You need to grant accessibility permissions:
 - System Settings → Privacy & Security → Accessibility
 - Add your terminal app and enable it
+
+### Permission Issues on New Systems
+
+HoldScribe now handles permissions more gracefully:
+1. **First run**: Prompts to grant accessibility permissions
+2. **Enhanced security**: Use `--prompt-permissions` for consent before each recording
+3. **Graceful fallback**: Continues with limited functionality if permissions denied
+
+```bash
+# Standard mode (one-time permission check)
+holdscribe
+
+# Enhanced security mode (prompts every time)
+holdscribe --prompt-permissions
+```
 
 ### Key Not Detected
 
