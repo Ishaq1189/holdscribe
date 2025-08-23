@@ -283,19 +283,28 @@ class HoldScribe:
             
     def start_listener(self):
         """Start the keyboard listener"""
-        print(f"HoldScribe ready! 🎤")
-        print(f"Hold {self.trigger_key} to record, release to transcribe")
         if not self.background_mode:
+            print(f"HoldScribe ready! 🎤")
+            print(f"Hold {self.trigger_key} to record, release to transcribe")
             print("Press ESC to exit")
         else:
-            print("Running in background mode - use 'killall Python' to stop")
+            # In background mode, minimal output
+            print(f"HoldScribe running in background 🎤")
+            print(f"Trigger key: {self.trigger_key}")
+            print(f"Stop with: killall Python or pkill -f holdscribe")
         
-        with keyboard.Listener(
-            on_press=self.on_key_press,
-            on_release=self.on_key_release
-        ) as listener:
-            self.listener = listener
-            listener.join()
+        try:
+            with keyboard.Listener(
+                on_press=self.on_key_press,
+                on_release=self.on_key_release,
+                suppress=False  # Don't suppress other key events
+            ) as listener:
+                self.listener = listener
+                listener.join()
+        except Exception as e:
+            if not self.background_mode:
+                print(f"Error starting listener: {e}")
+            # In background mode, fail silently or log to a file
             
     def cleanup(self):
         """Clean up resources"""
@@ -337,6 +346,42 @@ class HoldScribe:
             
         return granted
 
+def daemonize():
+    """Daemonize the process for true background operation"""
+    import os
+    import sys
+    
+    # First fork
+    try:
+        pid = os.fork()
+        if pid > 0:
+            # Parent process, exit
+            sys.exit(0)
+    except OSError:
+        print("Failed to fork process")
+        sys.exit(1)
+    
+    # Become session leader
+    os.setsid()
+    
+    # Second fork
+    try:
+        pid = os.fork()
+        if pid > 0:
+            # Parent process, exit
+            sys.exit(0)
+    except OSError:
+        print("Failed to fork process")
+        sys.exit(1)
+    
+    # Redirect standard file descriptors to /dev/null
+    si = open(os.devnull, 'r')
+    so = open(os.devnull, 'w')
+    se = open(os.devnull, 'w')
+    os.dup2(si.fileno(), sys.stdin.fileno())
+    os.dup2(so.fileno(), sys.stdout.fileno())
+    os.dup2(se.fileno(), sys.stderr.fileno())
+
 def main():
     import argparse
     
@@ -347,24 +392,51 @@ def main():
                        choices=["tiny", "base", "small", "medium", "large"],
                        help="AI model size (default: base)")
     parser.add_argument("--background", action="store_true",
-                       help="Run in background mode (disable ESC to exit)")
+                       help="Run in background mode (daemonize process)")
     parser.add_argument("--prompt-permissions", action="store_true",
                        help="Prompt for permissions before each recording (enhanced security)")
+    parser.add_argument("--daemon", action="store_true",
+                       help="True daemon mode (completely detach from terminal)")
     
     args = parser.parse_args()
     
-    # Check accessibility permissions before starting
-    if not check_accessibility_permissions(interactive=True):
-        print("\n⚠️  HoldScribe will run with limited functionality.")
-        print("Key monitoring may not work properly without accessibility permissions.")
-        print("You can grant permissions later in System Settings → Privacy & Security → Accessibility")
-        
-        response = input("\nDo you want to continue anyway? (y/N): ").strip().lower()
-        if response != 'y' and response != 'yes':
-            print("Exiting...")
+    # Handle daemonization first (before any output)
+    if args.daemon or args.background:
+        if platform.system() != "Darwin":
+            print("❌ Background/daemon mode only supported on macOS")
             sys.exit(1)
         
-        print("\n⚠️  Running with limited permissions - some features may not work correctly.")
+        # Check permissions before daemonizing
+        if not check_accessibility_permissions(interactive=not args.daemon):
+            if args.daemon:
+                # Can't prompt in daemon mode
+                sys.exit(1)
+            else:
+                print("\n⚠️  HoldScribe will run with limited functionality.")
+                print("Key monitoring may not work properly without accessibility permissions.")
+                response = input("\nDo you want to continue anyway? (y/N): ").strip().lower()
+                if response != 'y' and response != 'yes':
+                    sys.exit(1)
+        
+        if args.daemon:
+            print("🚀 Starting HoldScribe daemon...")
+            daemonize()
+        else:
+            print("🔄 Starting HoldScribe in background mode...")
+            print("💡 Use 'killall Python' or 'pkill -f holdscribe' to stop")
+    else:
+        # Interactive mode permission check
+        if not check_accessibility_permissions(interactive=True):
+            print("\n⚠️  HoldScribe will run with limited functionality.")
+            print("Key monitoring may not work properly without accessibility permissions.")
+            print("You can grant permissions later in System Settings → Privacy & Security → Accessibility")
+            
+            response = input("\nDo you want to continue anyway? (y/N): ").strip().lower()
+            if response != 'y' and response != 'yes':
+                print("Exiting...")
+                sys.exit(1)
+            
+            print("\n⚠️  Running with limited permissions - some features may not work correctly.")
     
     # Map key string to Key object
     key_map = {
@@ -397,15 +469,17 @@ def main():
     holdscribe = HoldScribe(
         trigger_key=trigger_key, 
         model_size=args.model, 
-        background_mode=args.background,
+        background_mode=args.background or args.daemon,
         prompt_permissions=args.prompt_permissions
     )
     
     # Show tip only in interactive mode
-    if not args.background:
+    if not args.background and not args.daemon:
         print(f"\n💡 \033[1m\033[36mTIP:\033[0m To run in background: \033[33mholdscribe --background\033[0m")
         print(f"   This lets you use other apps while HoldScribe runs.")
-        print(f"   Stop with: \033[31mkillall Python\033[0m")
+        print(f"   Stop with: \033[31mkillall Python\033[0m or \033[31mpkill -f holdscribe\033[0m")
+        print(f"\n🚀 \033[1m\033[36mDAEMON:\033[0m For true daemon mode: \033[33mholdscribe --daemon\033[0m")
+        print(f"   Completely detaches from terminal (no output)")
         if not args.prompt_permissions:
             print(f"\n🔐 \033[1m\033[36mSECURITY:\033[0m For enhanced security: \033[33mholdscribe --prompt-permissions\033[0m")
             print(f"   This prompts for permission before each recording.")
@@ -414,7 +488,8 @@ def main():
     try:
         holdscribe.start_listener()
     except KeyboardInterrupt:
-        print("\nInterrupted by user")
+        if not args.background and not args.daemon:
+            print("\nInterrupted by user")
     finally:
         holdscribe.cleanup()
 
