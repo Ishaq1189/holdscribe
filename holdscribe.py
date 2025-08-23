@@ -116,9 +116,11 @@ class HoldScribe:
         self.audio = pyaudio.PyAudio()
         
         # Load Whisper model
-        print(f"Loading AI model '{model_size}'...")
+        if not self.background_mode:
+            print(f"Loading AI model '{model_size}'...")
         self.model = whisper.load_model(model_size)
-        print("Model loaded successfully!")
+        if not self.background_mode:
+            print("Model loaded successfully!")
         
         # Keyboard listener
         self.listener = None
@@ -439,6 +441,18 @@ def main():
                     # Parent process - show success and exit
                     print(f"✅ HoldScribe started in background (PID: {pid})")
                     sys.exit(0)
+                else:
+                    # Child process - become session leader and continue
+                    os.setsid()
+                    
+                    # Redirect stdout/stderr to avoid crashes from print statements
+                    import sys
+                    sys.stdout.flush()
+                    sys.stderr.flush()
+                    
+                    # Don't fully redirect like daemon mode, but minimize output
+                    # This helps prevent crashes from GUI-related print operations
+                    
             except OSError:
                 print("❌ Failed to fork background process, running in foreground")
                 # Continue without forking
@@ -508,6 +522,16 @@ def main():
     except KeyboardInterrupt:
         if not args.background and not args.daemon:
             print("\nInterrupted by user")
+    except Exception as e:
+        if not args.background and not args.daemon:
+            print(f"\n❌ Error: {e}")
+        # In background/daemon mode, fail silently or log to file
+        import traceback
+        if args.background or args.daemon:
+            # Could log to a file here in the future
+            pass
+        else:
+            traceback.print_exc()
     finally:
         holdscribe.cleanup()
 
