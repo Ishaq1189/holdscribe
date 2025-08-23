@@ -4,6 +4,8 @@ HoldScribe - Push-to-Talk Voice Transcription Tool
 Hold a key to record, release to transcribe and paste at cursor
 """
 
+__version__ = "1.1.0"
+
 import pyaudio
 import wave
 import threading
@@ -385,14 +387,18 @@ def daemonize():
 def main():
     import argparse
     
-    parser = argparse.ArgumentParser(description="HoldScribe - Push-to-talk voice transcription")
+    parser = argparse.ArgumentParser(
+        description=f"HoldScribe v{__version__} - Push-to-talk voice transcription",
+        epilog="Hold your trigger key, speak, release to transcribe and paste!"
+    )
+    parser.add_argument("--version", action="version", version=f"HoldScribe {__version__}")
     parser.add_argument("--key", default="alt_r", 
                        help="Trigger key (default: alt_r, options: f1-f12, space, ctrl_r)")
     parser.add_argument("--model", default="base",
                        choices=["tiny", "base", "small", "medium", "large"],
                        help="AI model size (default: base)")
     parser.add_argument("--background", action="store_true",
-                       help="Run in background mode (daemonize process)")
+                       help="Run in background mode (fork process)")
     parser.add_argument("--prompt-permissions", action="store_true",
                        help="Prompt for permissions before each recording (enhanced security)")
     parser.add_argument("--daemon", action="store_true",
@@ -421,9 +427,21 @@ def main():
         if args.daemon:
             print("🚀 Starting HoldScribe daemon...")
             daemonize()
-        else:
+        elif args.background:
             print("🔄 Starting HoldScribe in background mode...")
             print("💡 Use 'killall Python' or 'pkill -f holdscribe' to stop")
+            
+            # Fork for background mode (but keep minimal output)
+            import os
+            try:
+                pid = os.fork()
+                if pid > 0:
+                    # Parent process - show success and exit
+                    print(f"✅ HoldScribe started in background (PID: {pid})")
+                    sys.exit(0)
+            except OSError:
+                print("❌ Failed to fork background process, running in foreground")
+                # Continue without forking
     else:
         # Interactive mode permission check
         if not check_accessibility_permissions(interactive=True):
