@@ -105,6 +105,7 @@ class HoldScribe:
         self.audio_queue = queue.Queue()
         self.recording_thread = None
         self.permission_granted = True  # Track current permission state
+        self.ctrl_pressed = False  # Track Ctrl key state for exit combination
         
         # Audio settings
         self.chunk = 1024
@@ -276,12 +277,16 @@ class HoldScribe:
         """Handle key press events"""
         if key == self.trigger_key:
             self.start_recording()
+        elif key in (Key.ctrl, Key.ctrl_l, Key.ctrl_r):
+            self.ctrl_pressed = True
             
     def on_key_release(self, key):
         """Handle key release events"""
         if key == self.trigger_key:
             self.stop_recording()
-        elif key == Key.esc and not self.background_mode:
+        elif key in (Key.ctrl, Key.ctrl_l, Key.ctrl_r):
+            self.ctrl_pressed = False
+        elif hasattr(key, 'char') and key.char == 'q' and self.ctrl_pressed and not self.background_mode:
             print("Exiting...")
             return False  # Stop listener
             
@@ -290,7 +295,7 @@ class HoldScribe:
         if not self.background_mode:
             print(f"HoldScribe ready! 🎤")
             print(f"Hold {self.trigger_key} to record, release to transcribe")
-            print("Press ESC to exit")
+            print("Press Ctrl+Q to exit")
         else:
             # In background mode, minimal output
             print(f"HoldScribe running in background 🎤")

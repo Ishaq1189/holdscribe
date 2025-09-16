@@ -59,7 +59,7 @@ jobs:
           ### Usage
           - Hold **Right Alt** key and speak
           - Release to transcribe and paste at cursor
-          - Press **ESC** to exit
+          - Press **Ctrl+Q** to exit
           
           ### Requirements
           - macOS 10.15+
