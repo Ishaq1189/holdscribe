@@ -225,13 +225,11 @@ class HoldScribe:
             
             # Transcribe with AI
             print("🤖 Transcribing...")
-            # Enhanced transcription parameters for better accuracy with accents
+            # Optimized transcription parameters for speed and Indian accent
             transcribe_params = {
                 "language": self.language,
                 "task": "transcribe",
                 "temperature": 0.0,  # More deterministic output
-                "best_of": 5,  # Try multiple decodings
-                "beam_size": 5,  # Beam search for better accuracy
             }
             
             # Add initial prompt if specified (helps with accent/context)
