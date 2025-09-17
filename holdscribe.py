@@ -97,10 +97,18 @@ def check_accessibility_permissions(interactive=True):
         return False
 
 class HoldScribe:
-    def __init__(self, trigger_key=Key.alt_r, model_size="base", background_mode=False, prompt_permissions=False):
+    def __init__(self, trigger_key=Key.alt_r, model_size="base", background_mode=False, prompt_permissions=False, 
+                 language="en", initial_prompt=None):
         self.trigger_key = trigger_key
         self.background_mode = background_mode
         self.prompt_permissions = prompt_permissions
+        self.language = language
+        
+        # Default to Indian accent prompt if no initial prompt provided
+        if initial_prompt is None:
+            self.initial_prompt = "The following is a transcription of Indian English speech. Common Indian English patterns and pronunciation should be expected."
+        else:
+            self.initial_prompt = initial_prompt
         self.is_recording = False
         self.audio_queue = queue.Queue()
         self.recording_thread = None
@@ -217,7 +225,20 @@ class HoldScribe:
             
             # Transcribe with AI
             print("🤖 Transcribing...")
-            result = self.model.transcribe(temp_filename, language="en")
+            # Enhanced transcription parameters for better accuracy with accents
+            transcribe_params = {
+                "language": self.language,
+                "task": "transcribe",
+                "temperature": 0.0,  # More deterministic output
+                "best_of": 5,  # Try multiple decodings
+                "beam_size": 5,  # Beam search for better accuracy
+            }
+            
+            # Add initial prompt if specified (helps with accent/context)
+            if self.initial_prompt:
+                transcribe_params["initial_prompt"] = self.initial_prompt
+            
+            result = self.model.transcribe(temp_filename, **transcribe_params)
             text = result["text"].strip()
             
             if text:
@@ -381,6 +402,12 @@ def main():
     parser.add_argument("--model", default="base",
                        choices=["tiny", "base", "small", "medium", "large"],
                        help="AI model size (default: base)")
+    parser.add_argument("--language", default="en",
+                       help="Language code for transcription (default: en)")
+    parser.add_argument("--accent", choices=["indian", "american", "british", "australian"],
+                       help="Accent optimization (default: indian, adds contextual prompting)")
+    parser.add_argument("--initial-prompt", type=str,
+                       help="Custom initial prompt to guide transcription style/context")
     parser.add_argument("--background", action="store_true",
                        help="Run in background mode (fork process)")
     parser.add_argument("--prompt-permissions", action="store_true",
@@ -389,6 +416,21 @@ def main():
                        help="True daemon mode (completely detach from terminal)")
     
     args = parser.parse_args()
+    
+    # Set up accent-specific initial prompts
+    accent_prompts = {
+        "indian": "The following is a transcription of Indian English speech. Common Indian English patterns and pronunciation should be expected.",
+        "american": "The following is a transcription of American English speech with standard American pronunciation.",
+        "british": "The following is a transcription of British English speech with standard British pronunciation.",
+        "australian": "The following is a transcription of Australian English speech with standard Australian pronunciation."
+    }
+    
+    # Determine the initial prompt - default to Indian accent if none specified
+    initial_prompt = args.initial_prompt
+    if not initial_prompt:
+        # Default to Indian accent if no accent specified and no custom prompt
+        accent_to_use = args.accent if args.accent else "indian"
+        initial_prompt = accent_prompts.get(accent_to_use)
     
     # For background mode, spawn a new detached process and exit parent
     if args.background:
@@ -495,7 +537,9 @@ def main():
         trigger_key=trigger_key, 
         model_size=args.model, 
         background_mode=args.background or args.daemon,
-        prompt_permissions=args.prompt_permissions
+        prompt_permissions=args.prompt_permissions,
+        language=args.language,
+        initial_prompt=initial_prompt
     )
     
     # Show tip only in interactive mode
@@ -508,6 +552,8 @@ def main():
         if not args.prompt_permissions:
             print(f"\n🔐 \033[1m\033[36mSECURITY:\033[0m For enhanced security: \033[33mholdscribe --prompt-permissions\033[0m")
             print(f"   This prompts for permission before each recording.")
+        print(f"\n🌍 \033[1m\033[36mACCENT:\033[0m For better accent recognition: \033[33mholdscribe --accent indian\033[0m")
+        print(f"   Optimizes for Indian, American, British, or Australian English")
         print()
     
     try:
